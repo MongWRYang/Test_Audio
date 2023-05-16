@@ -1,0 +1,1 @@
+g++ record_wav.cpp -lwinmm -mwindows -mconsole -o record_wav.exe
