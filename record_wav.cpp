@@ -4,22 +4,81 @@
 
 using namespace std;
 
-#define bufsize 44100*2*5 //samplerate*bytespersample(16bit=2byte)*seconds
+#define bufsize 44100*2*1 //samplerate*bytespersample(16bit=2byte)*seconds
 
+//MMRESULT 是mmsystem相關函數回傳值的變數
 MMRESULT mmreturn;
+//WAVEINCAPS 是儲存錄音input設備的結構體 (這邊用陣列儲存多個~)
 WAVEINCAPS WaveInCapsArr[5];
+//WAVEFORMATEX 定義音訊資料的格式的結構體
 WAVEFORMATEX WaveFormatex;
+//HWAVEIN 是一個被開啟的錄音input設備的句柄(handle)
+//句柄是Windows作業系統用來標識被應用程式所建立或使用的物件的整數。其本質相當於帶有參照計數的智慧型指標
 HWAVEIN hWaveIn_handle;
 
+//用來選擇錄音裝置的ID
 UINT WaveInDeviceID = 0;
 
+//WAVEHDR是用來識別 音訊資料緩衝區(buffer)的 標頭header結構體 
+//這個結構體會儲存緩衝區的一些資訊 裡面其中一個結構體的成員是一個指向buffer的指標(lpData)
 WAVEHDR wave_header;
+//設置buffer
 BYTE sound_buffer[bufsize];
+
+
+FILE* f;
+int STOPSIGN = 0;
+
+//設計callback函數
+void CALLBACK waveInProc(HWAVEIN hWaveIn,UINT uMsg,DWORD dwInstance,DWORD dwParam1,DWORD dwParam2){
+        cout << "callback called=======" << endl; 
+        LPWAVEHDR phd = (LPWAVEHDR)dwParam1;
+        cout << "dwParam1 address=" << dwParam1 << endl;
+        switch(uMsg){
+                case WIM_OPEN:{
+                        cout << "WIM_OPEN called" << endl; 
+                        break;
+                }
+                case WIM_DATA:{
+                        cout << "buffer address=" << phd << endl;
+                        cout << "recorded:"<< phd->dwBytesRecorded << endl;
+                        /*
+                        if(STOPSIGN == 1){
+                                cout << "STOPSIGN inside!!" << endl;
+                                return;
+                        }
+                        */
+                        if(phd->dwBytesRecorded < phd->dwBufferLength){
+                                cout << "not full return" << endl;
+                                return;
+                        }
+                        FILE *f = fopen("file2.pcm","ab+");
+                        fwrite(phd->lpData,1,phd->dwBytesRecorded,f);
+                        fclose(f);
+                        
+                        mmreturn = waveInAddBuffer(hWaveIn_handle,phd,sizeof(WAVEHDR));
+                        if(mmreturn != MMSYSERR_NOERROR){
+                                cout << "waveInAddBuffer Error! Error num: " << mmreturn << endl;
+                        }else{
+                                 cout << "waveInAddBuffer Success! in callback" << endl;
+                        }
+                        break;
+                }
+                case WIM_CLOSE:{
+                        cout << "WIM_CLOSE called" << endl; 
+                        break;
+                }
+                default:{
+                        break;
+                }
+        }
+        cout << "callback end=======" << endl; 
+}
 
 int main(int argc, char* argv[]){
     
     cout << "this is record wavfile program" << endl;
-
+    //獲取電腦上能用的錄音input裝置
     UINT WaveinCount;
     WaveinCount = waveInGetNumDevs();
     cout << "there are " << WaveinCount << " record devices on system" << endl;
@@ -37,6 +96,7 @@ int main(int argc, char* argv[]){
 
     cout << "==========================" << endl;
 
+    //給創立的WaveFormatex結構體賦值 以定義我們要的錄音音訊格式
     WaveFormatex.wFormatTag = WAVE_FORMAT_PCM;
     WaveFormatex.nChannels = 1;
     WaveFormatex.nSamplesPerSec = 44100;
@@ -45,21 +105,26 @@ int main(int argc, char* argv[]){
     WaveFormatex.nBlockAlign = 1*16/8;
     WaveFormatex.nAvgBytesPerSec = 44100*1*16/8;
 
+    //啟動錄音設備的函數 參數: 給該設備用的handle 選定的設備ID WaveFormatex結構體 回傳函數 回傳參數 flag
     cout << "Selected Device Id: " << WaveInDeviceID << "  - " << WaveInCapsArr[WaveInDeviceID].szPname << endl;
-    mmreturn = waveInOpen(&hWaveIn_handle, WaveInDeviceID, &WaveFormatex, (DWORD)NULL, (DWORD)NULL, (DWORD)NULL);
+    mmreturn = waveInOpen(&hWaveIn_handle, WaveInDeviceID, &WaveFormatex, (DWORD)waveInProc, (DWORD)NULL, CALLBACK_FUNCTION);
     if(mmreturn != MMSYSERR_NOERROR){
             cout << "waveInOpen Error! Error num: " << mmreturn << endl;
     }else{
             cout << "waveInOpen Success!" << endl;
     }
-
+    
+    //給header賦值
     wave_header.lpData = (LPSTR)sound_buffer;
     wave_header.dwBufferLength = bufsize;
     wave_header.dwBytesRecorded = 0;
     wave_header.dwFlags = 0;
     wave_header.dwUser = 0;
-    wave_header.dwLoops = 0;
+    wave_header.dwLoops = 1;
+    
+    //給錄音設備準備緩衝區 參數: 要添加緩衝的設備handle 緩衝區標頭的結構體地址 大小
 
+    
     mmreturn = waveInPrepareHeader(hWaveIn_handle,&wave_header,sizeof(WAVEHDR));
     if(mmreturn != MMSYSERR_NOERROR){
             cout << "waveInPrepareHeader Error! Error num: " << mmreturn << endl;
@@ -67,6 +132,10 @@ int main(int argc, char* argv[]){
             cout << "waveInPrepareHeader Success!" << endl;
     }
 
+    cout << "wave_header address=" << &wave_header << " prepared" << endl;
+
+
+    //給錄音設備準備緩衝區 參數: 要添加緩衝的設備handle 緩衝區標頭的結構體地址 大小
     mmreturn = waveInAddBuffer(hWaveIn_handle,&wave_header,sizeof(WAVEHDR));
     if(mmreturn != MMSYSERR_NOERROR){
             cout << "waveInAddBuffer Error! Error num: " << mmreturn << endl;
@@ -74,6 +143,7 @@ int main(int argc, char* argv[]){
             cout << "waveInAddBuffer Success!" << endl;
     }
 
+    //開始錄音
     mmreturn = waveInStart(hWaveIn_handle);
     if(mmreturn != MMSYSERR_NOERROR){
             cout << "waveInStart Error! Error num: " << mmreturn << endl;
@@ -81,8 +151,10 @@ int main(int argc, char* argv[]){
             cout << "waveInStart Success!" << endl;
     }
 
-    Sleep(5000);
-
+    Sleep(3300);
+   
+    //停止錄音
+    cout << "Calling waveInStop" << endl;
     mmreturn = waveInStop(hWaveIn_handle);
     if(mmreturn != MMSYSERR_NOERROR){
             cout << "waveInStop Error! Error num: " << mmreturn << endl;
@@ -90,9 +162,12 @@ int main(int argc, char* argv[]){
             cout << "waveInStop Success!" << endl;
     }
 
+    Sleep(1000);
+
     mmreturn = waveInUnprepareHeader(hWaveIn_handle, &wave_header, sizeof(WAVEHDR));
     if(mmreturn != MMSYSERR_NOERROR){
             cout << "waveInUnprepareHeader Error! Error num: " << mmreturn << endl;
+            cout << "WAVERR_STILLPLAYING is " << WAVERR_STILLPLAYING << endl;
     }else{
             cout << "waveInUnprepareHeader Success!" << endl;
     }
@@ -106,11 +181,13 @@ int main(int argc, char* argv[]){
             cout << "waveInClose Success!" << endl;
     }
 
+
+/*
     MMCKINFO wav_file_header1;
     MMCKINFO wav_file_header2;
     HMMIO wav_file;
     char wavfilename[20] = "wavfile.wav";
-    wav_file = mmioOpen((LPSTR)wavfilename, NULL, MMIO_CREATE|MMIO_WRITE|MMIO_EXCLUSIVE|MMIO_ALLOCBUF);
+    wav_file = mmioOpenA((LPSTR)wavfilename, NULL, MMIO_CREATE|MMIO_WRITE|MMIO_EXCLUSIVE|MMIO_ALLOCBUF);
 
     if(wav_file == NULL){
         cout << "mmioOpen Fail!" << endl;
@@ -194,7 +271,7 @@ int main(int argc, char* argv[]){
 	}else{
         cout << "mmioClose Success eric" << endl;
     }
-
+*/
 
     return 0;
 }
