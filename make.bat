@@ -1,1 +1,2 @@
-g++ record_wav.cpp -lwinmm -mwindows -mconsole -o record_wav.exe
+mkdir out
+gcc main.c -lwinmm -mwindows -mconsole -o out\AudioTest.exe
